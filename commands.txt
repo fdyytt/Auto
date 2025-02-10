@@ -1,0 +1,47 @@
+
+Buyer Chommands:
+- Command "stock" to view product stock.
+- Command "setuser" to set your in-game name.
+- Command "checkuser" to verify your in-game name.
+- Command "world" to check the current deposit world.
+- Command "balance" to check your balance.
+- Command "buy <product> <count>" to purchase products.
+
+Admin Commands:
+- Command "addProduct <product> <price>"
+- Command "addStock <product>" (WARNING: File attachment required: .txt
+- Command "deleteProduct <product>"
+- Command "changePrice <product> <new_price>"
+- Command "setDescription <product> <description>"
+- Command "setWorld <world> <owner> <bot>"
+- Command "send <user> <product> <count>
+- Command "addBal <user> <balance>"
+- Command "reduceBal <user> <balance>
+- command "stock" to view product stock.
+- Command "setuser" to set your in-game name.
+- Command "checkuser" to verify your in-game name.
+- Command "world" to check the current deposit world.
+- Command "balance" to check your balance.
+- Command "buy <product> <count>" to purchase products.
+
+Owner Chommand
+- Chomand "setAdmin  <admin_id> <guild_id> <id_history_deposit> <id_history_buy> <id_live_stock> <id_log_purch> <id_donation_log>" to add admin
+- Command "delAdmin <id_admin>" to remove all acsess admin from bot
+- Command "showAdmin <id_admin>" to see the admin rental time 
+- Command "addProduct <product> <price>"
+- Command "addStock <product>" (WARNING: File attachment required: .txt
+- Command "deleteProduct <product>"
+- Command "changePrice <product> <new_price>"
+- Command "setDescription <product> <description>"
+- Command "setWorld <world> <owner> <bot>"
+- Command "send <user> <product> <count>
+- Command "addBal <user> <balance>"
+- Command "reduceBal <user> <balance>
+- command "stock" to view product stock.
+- Command "setuser" to set your in-game name.
+- Command "checkuser" to verify your in-game name.
+- Command "world" to check the current deposit world.
+- Command "balance" to check your balance.
+- Command "buy <product> <count>" to purchase products.
+- Command "list" to show admin
+- Command "addTime <id_admin> <time> to increase admin rental time
