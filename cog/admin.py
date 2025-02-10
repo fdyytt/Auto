@@ -1,151 +1,78 @@
 import discord
 from discord.ext import commands
-from discord.ui import View, Button
-import sqlite3
+from database import Database
 from cog.config import load_config
 
-# Membaca konfigurasi dari file config.txt
+# Membaca konfigurasi dari file config.txt dengan validasi
 config = load_config('config.txt')
 
-# Inisialisasi database dengan konfigurasi
-db_path = config['LINK_DATABASE']
-conn = sqlite3.connect(db_path)
-
-class Database:
-    def __init__(self, conn):
-        self.conn = conn
-
-    def get_admin_data(self, user_id):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM admin WHERE user_id=?", (user_id,))
-        return cursor.fetchone()
-
-    def get_all_products(self, table, admin_id):
-        cursor = self.conn.cursor()
-        cursor.execute(f"SELECT * FROM {table} WHERE admin_id=?", (admin_id,))
-        return cursor.fetchall()
-
-    def get_user_balance(self, user_id):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-        result = cursor.fetchone()
-        return result[0] if result else 0
-
-    def update_user_balance(self, user_id, amount):
-        cursor = self.conn.cursor()
-        cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
-        self.conn.commit()
-
-    def update_product_stock(self, product_id, quantity):
-        cursor = self.conn.cursor()
-        cursor.execute("UPDATE products SET stock = stock + ? WHERE id = ?", (quantity, product_id))
-        self.conn.commit()
-
-    def find_product(self, table, query):
-        cursor = self.conn.cursor()
-        cursor.execute(f"SELECT * FROM {table} WHERE id = ? AND admin_id = ?", (query["_id"], query["admin_id"]))
-        return cursor.fetchone()
-
-    def get_channel_id(self, guild_id):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT channel_id FROM guilds WHERE guild_id=?", (guild_id,))
-        result = cursor.fetchone()
-        return result[0] if result else None
-
-db = Database(conn)
-
-class LiveCommands(commands.Cog):
-    def __init__(self, bot):
+class AdminCommands(commands.Cog):
+    def __init__(self, bot, db: Database):
         self.bot = bot
+        self.db = db
 
-    @commands.command(name='world')
-    async def world(self, ctx):
-        admin_data = db.get_admin_data(ctx.author.id)
-        if admin_data:
-            world_name = admin_data[1]  # Assuming world_name is the second column
-            owner = admin_data[2]  # Assuming owner is the third column
-            bot_name = admin_data[3]  # Assuming bot_name is the fourth column
-            await ctx.send(f'World: {world_name}\nOwner: {owner}\nBot: {bot_name}')
+    @commands.command(name='addProduct')
+    async def add_product(self, ctx, name: str, price: float):
+        product = {"name": name, "price": price, "stock": 0, "description": "", "admin_id": ctx.author.id}
+        self.db.insert_product("products", product)
+        await ctx.send(f'Product {name} added with price {price}!')
+
+    @commands.command(name='addStock')
+    async def add_stock(self, ctx, name: str, stock: int):
+        product = self.db.find_product("products", {"name": name, "admin_id": ctx.author.id})
+        if product:
+            new_stock = product["stock"] + stock
+            self.db.update_product("products", {"name": name, "admin_id": ctx.author.id}, {"stock": new_stock})
+            await ctx.send(f'Stock for {name} updated to {new_stock}!')
         else:
-            await ctx.send('Data world tidak ditemukan.')
+            await ctx.send(f'Product {name} not found!')
 
-    @commands.command(name='stock')
-    async def stock(self, ctx):
-        if ctx.author.guild_permissions.administrator:
-            produk_data = db.get_all_products("products", ctx.guild.owner_id)
-            user_balance = db.get_user_balance(ctx.author.id)
-            embed = discord.Embed(title='Live Stock', description=f'Saldo Anda: :WL: {user_balance}')
-            for produk in produk_data:
-                embed.add_field(name=produk[1], value=f'Harga: {produk[2]}\nStock: {produk[3]}', inline=False)
-            view = View()
-            for produk in produk_data:
-                button = Button(label=produk[1], style=discord.ButtonStyle.green)
-                button.custom_id = f'beli_{produk[0]}'
-                view.add_item(button)
-            await ctx.send(embed=embed, view=view)
+    @commands.command(name='deleteProduct')
+    async def delete_product(self, ctx, name: str):
+        self.db.delete_product("products", {"name": name, "admin_id": ctx.author.id})
+        await ctx.send(f'Product {name} deleted!')
+
+    @commands.command(name='changePrice')
+    async def change_price(self, ctx, name: str, new_price: float):
+        self.db.update_product("products", {"name": name, "admin_id": ctx.author.id}, {"price": new_price})
+        await ctx.send(f'Price for {name} changed to {new_price}!')
+
+    @commands.command(name='setDescription')
+    async def set_description(self, ctx, name: str, description: str):
+        self.db.update_product("products", {"name": name, "admin_id": ctx.author.id}, {"description": description})
+        await ctx.send(f'Description for {name} updated!')
+
+    @commands.command(name='setWorld')
+    async def set_world(self, ctx, world: str, owner: str, bot: str):
+        world_info = {"world": world, "owner": owner, "bot": bot, "admin_id": ctx.author.id}
+        self.db.update_world_info("world_info", world_info)
+        await ctx.send(f'World information updated!')
+
+    @commands.command(name='send')
+    async def send_product(self, ctx, user: str, product: str, count: int):
+        product_info = self.db.find_product("products", {"name": product, "admin_id": ctx.author.id})
+        if product_info and product_info["stock"] >= count:
+            self.db.update_product("products", {"name": product, "admin_id": ctx.author.id}, {"stock": product_info["stock"] - count})
+            await ctx.send(f'Sent {count} {product} to {user}!')
         else:
-            await ctx.send('Anda tidak memiliki akses untuk menjalankan command ini!')
+            await ctx.send(f'Not enough stock for {product}!')
 
-    @commands.Cog.listener()
-    async def on_interaction(self, interaction):
-        if interaction.type == discord.InteractionType.component:
-            if interaction.data.custom_id.startswith('beli_'):
-                produk_id = interaction.data.custom_id.split('_')[1]
-                produk_data = db.find_product("products", {"_id": produk_id, "admin_id": interaction.guild.owner_id})
-                if produk_data is None:
-                    await interaction.response.send_message('Produk tidak ditemukan!', ephemeral=True)
-                    return
-                produk_data = produk_data
-                harga = produk_data[2]
-                
-                await interaction.response.send_message(f'Anda ingin membeli {produk_data[1]} dengan harga {harga} per unit. Berapa jumlah yang ingin Anda beli?', ephemeral=True)
+    @commands.command(name='addBal')
+    async def add_balance(self, ctx, user: str, balance: float):
+        user_info = self.db.find_user("users", {"name": user, "admin_id": ctx.author.id})
+        if user_info:
+            new_balance = user_info["balance"] + balance
+            self.db.update_user("users", {"name": user, "admin_id": ctx.author.id}, {"balance": new_balance})
+            await ctx.send(f'Balance for {user} updated to {new_balance}!')
 
-                def check(msg):
-                    return msg.author == interaction.user and msg.channel == interaction.channel
-
-                msg = await self.bot.wait_for('message', check=check)
-                try:
-                    jumlah = int(msg.content)
-                    if jumlah <= 0:
-                        raise ValueError("Jumlah harus lebih dari 0")
-                except ValueError:
-                    await interaction.followup.send('Jumlah yang Anda masukkan tidak valid. Silakan coba lagi.', ephemeral=True)
-                    return
-
-                total_harga = harga * jumlah
-                user_balance = db.get_user_balance(interaction.user.id)
-                if user_balance < total_harga:
-                    await interaction.followup.send('Saldo tidak cukup!', ephemeral=True)
-                    return
-                
-                if produk_data[3] < jumlah:
-                    await interaction.followup.send('Stok tidak mencukupi!', ephemeral=True)
-                    return
-
-                db.update_user_balance(interaction.user.id, -total_harga)
-                db.update_product_stock(produk_id, -jumlah)
-                await interaction.followup.send(f'Anda telah membeli {jumlah} {produk_data[1]} dengan total harga {total_harga}!', ephemeral=True)
-
-                # Kirimkan barang ke buyer
-                buyer = interaction.user
-                with open(f"results_{buyer.name}.txt", "w") as f:
-                    f.write(produk_data[4])  # Assuming deskripsi is the fifth column
-                await buyer.send(file=discord.File(f"results_{buyer.name}.txt"))
-
-                # Update stock embed
-                produk_data = db.get_all_products("products", interaction.guild.owner_id)
-                user_balance = db.get_user_balance(interaction.user.id)
-                embed = discord.Embed(title='Live Stock', description=f'Saldo Anda: :WL: {user_balance}')
-                for produk in produk_data:
-                    embed.add_field(name=produk[1], value=f'Harga: {produk[2]}\nStock: {produk[3]}', inline=False)
-                view = View()
-                for produk in produk_data:
-                    button = Button(label=produk[1], style=discord.ButtonStyle.green)
-                    button.custom_id = f'beli_{produk[0]}'
-                    view.add_item(button)
-                channel_id = db.get_channel_id(interaction.guild.id)
-                channel = self.bot.get_channel(channel_id)
-                await channel.send(embed=embed, view=view)
+    @commands.command(name='reduceBal')
+    async def reduce_balance(self, ctx, user: str, balance: float):
+        user_info = self.db.find_user("users", {"name": user, "admin_id": ctx.author.id})
+        if user_info:
+            new_balance = user_info["balance"] - balance
+            self.db.update_user("users", {"name": user, "admin_id": ctx.author.id}, {"balance": new_balance})
+            await ctx.send(f'Balance for {user} updated to {new_balance}!')
 
 async def setup(bot):
-    await bot.add_cog(LiveCommands(bot))
+    db = Database(config['LINK_DATABASE'], 'discord_bot')
+    await bot.add_cog(AdminCommands(bot, db))
