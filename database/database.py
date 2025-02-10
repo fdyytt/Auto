@@ -7,11 +7,16 @@ def load_config(file_path):
     try:
         with open(file_path, 'r') as f:
             config_lines = f.readlines()
+            if len(config_lines) < 2:
+                raise ValueError("Config file must contain at least two lines")
             config = [line.strip() for line in config_lines]
             return {
                 'DISCORD_TOKEN': config[0].split('=')[1].strip('\"'),
                 'LINK_DATABASE': config[1].split('=')[1].strip('\"'),
             }
+    except IndexError as e:
+        logging.error(f"Failed to load config: {type(e).__name__} - {e}. Please check the format of the config file.")
+        raise
     except Exception as e:
         logging.error(f"Failed to load config: {type(e).__name__} - {e}")
         raise
