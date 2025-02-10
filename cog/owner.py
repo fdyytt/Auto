@@ -2,11 +2,15 @@ import discord
 from discord.ext import commands
 from database import Database
 from datetime import datetime, timedelta
+from cog.config import load_config
+
+# Membaca konfigurasi dari file config.txt dengan validasi
+config = load_config('config.txt')
 
 class OwnerCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.db = Database('/storage/emulated/0/bot/MultipleFiles/mydatabase.db')
+        self.db = Database(config['LINK_DATABASE'])
 
     @commands.command(name='add_product')
     @commands.has_guild_permissions(administrator=True)
@@ -94,47 +98,4 @@ class OwnerCommands(commands.Cog):
 
     @commands.command(name='delAdmin')
     @commands.has_guild_permissions(administrator=True)
-    async def del_admin(self, ctx, admin_id: str):
-        self.db.delete('admins', {'discord_id': admin_id})
-        await ctx.send(f"Admin {admin_id} berhasil dihapus.")
-
-    @commands.command(name='showAdmin')
-    @commands.has_guild_permissions(administrator=True)
-    async def show_admin(self, ctx, admin_id: str):
-        admin_data = self.db.find('admins', {'discord_id': admin_id})
-        if admin_data:
-            admin_data = admin_data[0]
-            rental_time = datetime.fromisoformat(admin_data[8])
-            await ctx.send(f"Admin {admin_id} terdaftar pada {rental_time.strftime('%Y-%m-%d %H:%M:%S')}.")
-        else:
-            await ctx.send(f"Admin {admin_id} tidak ditemukan.")
-
-    @commands.command(name='list')
-    @commands.has_guild_permissions(administrator=True)
-    async def list_admin(self, ctx):
-        admins = self.db.find('admins', {})
-        if not admins:
-            await ctx.send("Tidak ada admin yang ditemukan.")
-            return
-
-        embed = discord.Embed(title="Daftar Admin", description="Berikut adalah daftar admin:")
-        for admin in admins:
-            rental_time = datetime.fromisoformat(admin[8])
-            embed.add_field(name=admin[1], value=f"Guild ID: {admin[2]}\nRental Time: {rental_time.strftime('%Y-%m-%d %H:%M:%S')}", inline=False)
-        await ctx.send(embed=embed)
-
-    @commands.command(name='addTime')
-    @commands.has_guild_permissions(administrator=True)
-    async def add_time(self, ctx, admin_id: str, time: int):
-        admin_data = self.db.find('admins', {'discord_id': admin_id})
-        if admin_data:
-            admin_data = admin_data[0]
-            rental_time = datetime.fromisoformat(admin_data[8])
-            new_rental_time = rental_time + timedelta(days=time)
-            self.db.update('admins', {'discord_id': admin_id}, {'rental_time': new_rental_time.isoformat()})
-            await ctx.send(f"Rental time untuk admin {admin_id} berhasil diperpanjang hingga {new_rental_time.strftime('%Y-%m-%d %H:%M:%S')}.")
-        else:
-            await ctx.send(f"Admin {admin_id} tidak ditemukan.")
-
-async def setup(bot):
-    await bot.add_cog(OwnerCommands(bot))
+    async def
