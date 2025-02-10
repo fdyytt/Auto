@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
-from database import Database, load_config
+from database import Database
+from cog.config import load_config
 
 # Membaca konfigurasi dari file config.txt dengan validasi
 config = load_config('config.txt')
