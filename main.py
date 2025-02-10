@@ -1,14 +1,11 @@
 import sys
-sys.path.insert(0, '/storage/emulated/0/bot/MultipleFiles/commands')
-
+import os
 import discord
 from discord.ext import commands
-import os
-from MultipleFiles.utils import Live
-from MultipleFiles.utils.config import load_config
 import asyncio
 import logging
 import logging.config
+from database import Database
 
 # Konfigurasi logging
 logging.config.dictConfig({
@@ -35,8 +32,31 @@ logging.config.dictConfig({
 
 logger = logging.getLogger(__name__)
 
-# Membaca konfigurasi dari file config.txt dengan validasi
-config = load_config('/storage/emulated/0/bot/config.txt')
+#Membaca konfigurasi dari file config.txt dengan validasi
+def load_config(filename):
+    try:
+        with open(filename, 'r') as f:
+            config = {}
+            for line in f:
+                line = line.strip()
+                if '=' in line:
+                    key, value = line.split('=')
+                    config[key] = value
+            return config
+    except FileNotFoundError:
+        print(f"File {filename} tidak ditemukan")
+        return None
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+filename = '/storage/emulated/0/bot/config.txt'
+config = load_config(filename)
+if config is None:
+    print("Konfigurasi gagal dimuat")
+else:
+    print("Konfigurasi berhasil dimuat")
+    print(config)
 
 # Inisialisasi intents
 intents = discord.Intents.default()
@@ -47,20 +67,24 @@ intents.guilds = True
 # Inisialisasi bot
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Koneksi ke database
-try:
-    db_path = config['LINK_DATABASE']
-    live_manager = Live(db_path)
-except Exception as e:
-    logger.error(f'Failed to connect to the database: {type(e).__name__} - {e}')
-    print(f'Failed to connect to the database: {type(e).__name__} - {e}')
-    raise
+ # Koneksi ke database
+    try:
+        db_path = config.get('LINK_DATABASE')
+        if db_path is None:
+            logger.error("LINK_DATABASE tidak ditemukan dalam konfigurasi")
+            print("LINK_DATABASE tidak ditemukan dalam konfigurasi")
+        else:
+            db = Database(db_path)
+    except Exception as e:
+        logger.error(f'Failed to connect to the database: {type(e).__name__} - {e}')
+        print(f'Failed to connect to the database: {type(e).__name__} - {e}')
+        raise
 
 # Memuat cogs
 initial_extensions = [
-    'MultipleFiles.commands.donation',
-    'MultipleFiles.commands.balance',
-    'MultipleFiles.utils.live',
+    'cog.admin',
+    'cog.live',
+    'cog.owner',
 ]
 
 @bot.event
