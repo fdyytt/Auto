@@ -15,4 +15,3 @@ Owner Chommand
 - Command "delAdmin <id_admin>" to remove all acsess admin from bot
 - Command "showAdmin <id_admin>" to see the admin rental time 
 - Command "addTime <id_admin> <time> to increase admin rental time
-- 
