@@ -6,6 +6,8 @@ import asyncio
 import logging
 import logging.config
 from database import Database, load_config
+from donation import Donation
+from balance import Balance
 
 # Konfigurasi logging
 logging.config.dictConfig({
@@ -43,7 +45,7 @@ intents.guilds = True
 
 # Inisialisasi bot
 bot = commands.Bot(command_prefix='!', intents=intents)
-
+load_extension('donation')
 # Koneksi ke database
 try:
     db_path = config.get('LINK_DATABASE')
