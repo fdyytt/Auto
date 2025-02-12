@@ -1,10 +1,10 @@
 import discord
 from discord.ext import commands
-from discord.ui import View, Button, button
+from discord.ui import View, Button
 import sqlite3
 from main import config
 
-#Inisialisasi database dengan konfigurasi
+# Inisialisasi database dengan konfigurasi
 db_path = config['LINK_DATABASE']
 conn = sqlite3.connect(db_path)
 
@@ -12,9 +12,9 @@ class Database:
     def __init__(self, conn):
         self.conn = conn
 
-    def get_admin_data(self, grow_id):
+    def get_admin_data(self, admin_id):
         cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM admins WHERE discord_id=?", (grow_id,))
+        cursor.execute("SELECT * FROM admins WHERE discord_id=?", (admin_id,))
         return cursor.fetchone()
 
     def get_all_products(self, table, admin_id):
@@ -35,7 +35,7 @@ class Database:
 
     def update_product_stock(self, product_id, admin_id, quantity):
         cursor = self.conn.cursor()
-        cursor.execute("UPDATE products SET stock = stock + ? WHERE id = ? AND admin_id = ?", (quantity, product_id, admin_id))
+        cursor.execute("UPDATE products SET stock = stock - ? WHERE id = ? AND admin_id = ?", (quantity, product_id, admin_id))
         self.conn.commit()
 
     def find_product(self, table, query):
@@ -52,8 +52,29 @@ class Database:
     def log_purchase(self, grow_id, product_id, jumlah, total_harga, admin_id):
         sql = '''INSERT INTO transactions (grow_id, product_id, jumlah, total_harga, tanggal, admin_id)
                  VALUES (?, ?, ?, ?, datetime('now'), ?)'''
-        self.cursor.execute(sql, (grow_id, product_id, jumlah, total_harga, admin_id))
+        cursor = self.conn.cursor()
+        cursor.execute(sql, (grow_id, product_id, jumlah, total_harga, admin_id))
         self.conn.commit()
+
+    def set_grow_id(self, grow_id, user_id):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM grow_ids WHERE grow_id=?", (grow_id,))
+        if cursor.fetchone():
+            return False
+        cursor.execute("INSERT INTO grow_ids (grow_id, user_id) VALUES (?, ?)", (grow_id, user_id))
+        self.conn.commit()
+        return True
+
+    def get_world_info(self, admin_id):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT world, owner, bot FROM world_info WHERE admin_id=?", (admin_id,))
+        return cursor.fetchone()
+
+    def get_grow_id(self, user_id):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT grow_id FROM grow_ids WHERE user_id=?", (user_id,))
+        result = cursor.fetchone()
+        return result[0] if result else None
 
 db = Database(conn)
 
@@ -85,7 +106,12 @@ class BuyButton(Button):
             return
 
         total_harga = harga * jumlah
-        user_balance = db.get_user_balance(interaction.user.id, interaction.guild.owner_id)
+        grow_id = db.get_grow_id(interaction.user.id)
+        if not grow_id:
+            await interaction.followup.send('Anda belum mengatur Grow ID Anda. Gunakan tombol "Set Grow ID" untuk mengaturnya.', ephemeral=True)
+            return
+
+        user_balance = db.get_user_balance(grow_id, interaction.guild.owner_id)
         if user_balance < total_harga:
             await interaction.followup.send('Saldo tidak cukup!', ephemeral=True)
             return
@@ -94,9 +120,9 @@ class BuyButton(Button):
             await interaction.followup.send('Stok tidak mencukupi!', ephemeral=True)
             return
 
-        db.update_user_balance(interaction.user.id, interaction.guild.owner_id, -total_harga)
+        db.update_user_balance(grow_id, interaction.guild.owner_id, -total_harga)
         db.update_product_stock(self.product_id, interaction.guild.owner_id, -jumlah)
-        db.log_purchase(interaction.user.id, self.product_id, jumlah, total_harga, interaction.guild.owner_id)
+        db.log_purchase(grow_id, self.product_id, jumlah, total_harga, interaction.guild.owner_id)
         await interaction.followup.send(f'Anda telah membeli {jumlah} {produk_data[1]} dengan total harga {total_harga}!', ephemeral=True)
 
         # Kirimkan barang ke buyer
@@ -107,7 +133,7 @@ class BuyButton(Button):
 
         # Update stock embed
         produk_data = db.get_all_products("products", interaction.guild.owner_id)
-        user_balance = db.get_user_balance(interaction.user.id, interaction.guild.owner_id)
+        user_balance = db.get_user_balance(grow_id, interaction.guild.owner_id)
         embed = discord.Embed(title='Live Stock', description=f'Saldo Anda: :WL: {user_balance}')
         for produk in produk_data:
             embed.add_field(name=produk[1], value=f'Harga: {produk[2]}\nStock: {produk[3]}', inline=False)
@@ -115,9 +141,54 @@ class BuyButton(Button):
         for produk in produk_data:
             button = BuyButton(label=produk[1], product_id=produk[0])
             view.add_item(button)
+        view.add_item(SetGrowIDButton())
+        view.add_item(WorldButton())
+        view.add_item(BalanceButton())
         channel_id = db.get_channel_id(interaction.guild.id)
         channel = self.view.bot.get_channel(channel_id)
         await channel.send(embed=embed, view=view)
+
+class SetGrowIDButton(Button):
+    def __init__(self, label='Set Grow ID', style=discord.ButtonStyle.blurple):
+        super().__init__(label=label, style=style)
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_message('Masukkan Grow ID yang ingin Anda atur:', ephemeral=True)
+
+        def check(msg):
+            return msg.author == interaction.user and msg.channel == interaction.channel
+
+        msg = await self.view.bot.wait_for('message', check=check)
+        grow_id = msg.content
+
+        if db.set_grow_id(grow_id, interaction.user.id):
+            await interaction.followup.send(f'Grow ID {grow_id} berhasil diatur!', ephemeral=True)
+        else:
+            await interaction.followup.send(f'Grow ID {grow_id} sudah ada di database dan tidak dapat digunakan.', ephemeral=True)
+
+class WorldButton(Button):
+    def __init__(self, label='World', style=discord.ButtonStyle.gray):
+        super().__init__(label=label, style=style)
+
+    async def callback(self, interaction: discord.Interaction):
+        world_info = db.get_world_info(interaction.guild.owner_id)
+        if world_info:
+            world_name, owner, bot = world_info
+            await interaction.response.send_message(f'World: {world_name}\nOwner: {owner}\nBot: {bot}', ephemeral=True)
+        else:
+            await interaction.response.send_message('Data world tidak ditemukan.', ephemeral=True)
+
+class BalanceButton(Button):
+    def __init__(self, label='Balance', style=discord.ButtonStyle.green):
+        super().__init__(label=label, style=style)
+
+    async def callback(self, interaction: discord.Interaction):
+        grow_id = db.get_grow_id(interaction.user.id)
+        if not grow_id:
+            await interaction.response.send_message('Anda belum mengatur Grow ID Anda. Gunakan tombol "Set Grow ID" untuk mengaturnya.', ephemeral=True)
+            return
+        balance = db.get_user_balance(grow_id, interaction.guild.owner_id)
+        await interaction.response.send_message(f'Saldo Anda: :WL: {balance}', ephemeral=True)
 
 class LiveCommands(commands.Cog):
     def __init__(self, bot):
@@ -136,19 +207,20 @@ class LiveCommands(commands.Cog):
 
     @commands.command(name='stock')
     async def stock(self, ctx):
-        if ctx.author.guild_permissions.administrator:
-            produk_data = db.get_all_products("products", ctx.guild.owner_id)
-            user_balance = db.get_user_balance(ctx.author.id, ctx.guild.owner_id)
-            embed = discord.Embed(title='Live Stock', description=f'Saldo Anda: :WL: {user_balance}')
-            for produk in produk_data:
-                embed.add_field(name=produk[1], value=f'Harga: {produk[2]}\nStock: {produk[3]}', inline=False)
-            view = View()
-            for produk in produk_data:
-                button = BuyButton(label=produk[1], product_id=produk[0])
-                view.add_item(button)
-            await ctx.send(embed=embed, view=view)
-        else:
-            await ctx.send('Anda tidak memiliki akses untuk menjalankan command ini!')
+        produk_data = db.get_all_products("products", ctx.guild.owner_id)
+        grow_id = db.get_grow_id(ctx.author.id)
+        user_balance = db.get_user_balance(grow_id, ctx.guild.owner_id) if grow_id else 0
+        embed = discord.Embed(title='Live Stock', description=f'Saldo Anda: :WL: {user_balance}')
+        for produk in produk_data:
+            embed.add_field(name=produk[1], value=f'Harga: {produk[2]}\nStock: {produk[3]}', inline=False)
+        view = View()
+        for produk in produk_data:
+            button = BuyButton(label=produk[1], product_id=produk[0])
+            view.add_item(button)
+        view.add_item(SetGrowIDButton())
+        view.add_item(WorldButton())
+        view.add_item(BalanceButton())
+        await ctx.send(embed=embed, view=view)
 
 async def setup(bot):
     await bot.add_cog(LiveCommands(bot))
