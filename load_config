@@ -1,0 +1,27 @@
+def load_config(filename):
+    # kode untuk memuat konfigurasi
+    config = {}
+    try:
+        with open(filename, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                try:
+                    key, value = line.split('=')
+                    key = key.strip()
+                    value = value.strip()
+                    config[key] = value
+                except ValueError:
+                    print(f"Error: Format konfigurasi salah pada baris '{line}'")
+                    return None
+    except FileNotFoundError:
+        print(f"Error: File '{filename}' tidak ditemukan")
+        return None
+    except PermissionError:
+        print(f"Error: Tidak memiliki izin untuk membaca file '{filename}'")
+        return None
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+    return config
