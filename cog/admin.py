@@ -1,131 +1,80 @@
 import discord
 from discord.ext import commands
-from live import db, BuyButton
-from discord.ui import View
 from main import config
+import sqlite3
 
-class AdminCommands(commands.Cog):
-    def __init__(self, bot, db):
+# Inisialisasi database dengan konfigurasi
+db_path = config['DEFAULT']['LINK_DATABASE']
+conn = sqlite3.connect(db_path)
+
+class Database:
+    def __init__(self, conn):
+        self.conn = conn
+
+    def set_admin(self, admin_id, guild_id, id_history_buy, id_live_stock, id_log_purch, id_donation_log):
+        cursor = self.conn.cursor()
+        cursor.execute("INSERT INTO admins (discord_id, guild_id, id_history_buy, id_live_stock, id_log_purch, id_donation_log, rental_time_days) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                       (admin_id, guild_id, id_history_buy, id_live_stock, id_log_purch, id_donation_log, 0))
+        self.conn.commit()
+
+    def del_admin(self, admin_id):
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM admins WHERE discord_id=?", (admin_id,))
+        self.conn.commit()
+
+    def show_admin(self, admin_id):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM admins WHERE discord_id=?", (admin_id,))
+        return cursor.fetchone()
+
+    def add_time(self, admin_id, days):
+        cursor = self.conn.cursor()
+        cursor.execute("UPDATE admins SET rental_time_days = rental_time_days + ? WHERE discord_id=?", (days, admin_id))
+        self.conn.commit()
+
+db = Database(conn)
+
+class OwnerCommands(commands.Cog):
+    def __init__(self, bot):
         self.bot = bot
-        self.db = db
 
-    def is_admin(self, ctx):
-        return ctx.author.id in self.db.get_admin_ids()
+    def is_owner(self, ctx):
+        return ctx.author.id == self.bot.owner_id
 
-    @commands.command(name='addProduct')
-    async def add_product(self, ctx, name_product: str, price: float):
-        if self.is_admin(ctx):
-            try:
-                product = {"name": name_product, "price": price, "stock": 0, "description": "", "admin_id": ctx.author.id}
-                self.db.insert("products", product)
-                await ctx.send(f'Product {name_product} added with price {price}!')
-            except Exception as e:
-                await ctx.send(f'Error: {str(e)}')
+    @commands.command(name='setAdmin')
+    async def set_admin(self, ctx, admin_id: int, guild_id: int, id_history_buy: int, id_live_stock: int, id_log_purch: int, id_donation_log: int):
+        if self.is_owner(ctx):
+            db.set_admin(admin_id, guild_id, id_history_buy, id_live_stock, id_log_purch, id_donation_log)
+            await ctx.send(f'Admin {admin_id} has been set for guild {guild_id}.')
         else:
-            await ctx.send("Anda tidak memiliki akses admin.")
+            await ctx.send("You do not have permission to use this command.")
 
-    @commands.command(name='addStock')
-    async def add_stock(self, ctx, name_product: str, stock: int):
-        if self.is_admin(ctx):
-            product = self.db.find_product("products", {"name": name_product, "admin_id": ctx.author.id})
-            if product:
-                new_stock = product[3] + stock
-                self.db.update("products", {"name": name_product, "admin_id": ctx.author.id}, {"stock": new_stock})
-                await ctx.send(f'Stock for {name_product} updated to {new_stock}!')
+    @commands.command(name='delAdmin')
+    async def del_admin(self, ctx, admin_id: int):
+        if self.is_owner(ctx):
+            db.del_admin(admin_id)
+            await ctx.send(f'Admin {admin_id} has been removed.')
+        else:
+            await ctx.send("You do not have permission to use this command.")
+
+    @commands.command(name='showAdmin')
+    async def show_admin(self, ctx, admin_id: int):
+        if self.is_owner(ctx):
+            admin_data = db.show_admin(admin_id)
+            if admin_data:
+                await ctx.send(f'Admin ID: {admin_data[0]}\nGuild ID: {admin_data[1]}\nHistory Buy ID: {admin_data[2]}\nLive Stock ID: {admin_data[3]}\nLog Purchase ID: {admin_data[4]}\nDonation Log ID: {admin_data[5]}\nRental Time (days): {admin_data[6]}')
             else:
-                await ctx.send(f'Product {name_product} not found!')
+                await ctx.send(f'Admin {admin_id} not found.')
         else:
-            await ctx.send("Anda tidak memiliki akses admin.")
+            await ctx.send("You do not have permission to use this command.")
 
-    @commands.command(name='deleteProduct')
-    async def delete_product(self, ctx, name_product: str):
-        if self.is_admin(ctx):
-            self.db.delete("products", {"name": name_product, "admin_id": ctx.author.id})
-            await ctx.send(f'Product {name_product} deleted!')
+    @commands.command(name='addTime')
+    async def add_time(self, ctx, admin_id: int, days: int):
+        if self.is_owner(ctx):
+            db.add_time(admin_id, days)
+            await ctx.send(f'Rental time for admin {admin_id} has been increased by {days} days.')
         else:
-            await ctx.send("Anda tidak memiliki akses admin.")
-
-    @commands.command(name='changePrice')
-    async def change_price(self, ctx, name_product: str, new_price: float):
-        if self.is_admin(ctx):
-            self.db.update("products", {"name": name_product, "admin_id": ctx.author.id}, {"price": new_price})
-            await ctx.send(f'Price for {name_product} changed to {new_price}!')
-        else:
-            await ctx.send("Anda tidak memiliki akses admin.")
-
-    @commands.command(name='setDescription')
-    async def set_description(self, ctx, name_product: str, description: str):
-        if self.is_admin(ctx):
-            self.db.update("products", {"name": name_product, "admin_id": ctx.author.id}, {"description": description})
-            await ctx.send(f'Description for {name_product} updated!')
-        else:
-            await ctx.send("Anda tidak memiliki akses admin.")
-
-    @commands.command(name='setWorld')
-    async def set_world(self, ctx, world: str, owner: str, bot: str):
-        if self.is_admin(ctx):
-            world_info = {"world": world, "owner": owner, "bot": bot, "admin_id": ctx.author.id}
-            self.db.update("world_info", {"world": world, "admin_id": ctx.author.id}, world_info)
-            await ctx.send(f'World information updated!')
-        else:
-            await ctx.send("Anda tidak memiliki akses admin.")
-
-    @commands.command(name='send')
-    async def send_product(self, ctx, grow_id: str, product: str, count: int):
-        if self.is_admin(ctx):
-            product_info = self.db.find_product("products", {"name": product, "admin_id": ctx.author.id})
-            if product_info and product_info[3] >= count:
-                new_stock = product_info[3] - count
-                self.db.update("products", {"name": product, "admin_id": ctx.author.id}, {"stock": new_stock})
-                await ctx.send(f'Sent {count} {product} to {grow_id}!')
-            else:
-                await ctx.send(f'Not enough stock for {product}!')
-        else:
-            await ctx.send("Anda tidak memiliki akses admin.")
-
-    @commands.command(name='addBal')
-    async def add_balance(self, ctx, grow_id: str, balance: float):
-        if self.is_admin(ctx):
-            user_info = self.db.find("balances", {"grow_id": grow_id, "admin_id": ctx.author.id})
-            if user_info:
-                new_balance = user_info[0][1] + balance
-                self.db.update("balances", {"grow_id": grow_id, "admin_id": ctx.author.id}, {"balance": new_balance})
-                await ctx.send(f'Balance for {grow_id} updated to {new_balance}!')
-            else:
-                await ctx.send(f'User {grow_id} not found!')
-        else:
-            await ctx.send("Anda tidak memiliki akses admin.")
-
-    @commands.command(name='reduceBal')
-    async def reduce_balance(self, ctx, grow_id: str, balance: float):
-        if self.is_admin(ctx):
-            user_info = self.db.find("balances", {"grow_id": grow_id, "admin_id": ctx.author.id})
-            if user_info:
-                new_balance = user_info[0][1] - balance
-                self.db.update("balances", {"grow_id": grow_id, "admin_id": ctx.author.id}, {"balance": new_balance})
-                await ctx.send(f'Balance for {grow_id} updated to {new_balance}!')
-            else:
-                await ctx.send(f'User {grow_id} not found!')
-        else:
-            await ctx.send("Anda tidak memiliki akses admin.")
-
-    @commands.command(name='stock')
-    async def stock(self, ctx, id_live_stock: int):
-        channel = self.bot.get_channel(id_live_stock)
-        produk_data = self.db.get_all_products("products", ctx.guild.owner_id)
-        user_balance = self.db.get_user_balance(ctx.author.id, ctx.guild.owner_id)
-        embed = discord.Embed(title='Live Stock', description=f'Saldo Anda: :WL: {user_balance}')
-        for produk in produk_data:
-            embed.add_field(name=produk[1], value=f'Harga: {produk[2]}\nStock: {produk[3]}', inline=False)
-        view = View()
-        for produk in produk_data:
-            button = BuyButton(label=produk[1], product_id=produk[0])
-            view.add_item(button)
-        await channel.send(embed=embed, view=view)
-
-    async def cog_check(self, ctx):
-        return self.is_admin(ctx)
+            await ctx.send("You do not have permission to use this command.")
 
 async def setup(bot):
-    db = Database(config['LINK_DATABASE'])
-    await bot.add_cog(AdminCommands(bot, db))
+    await bot.add_cog(OwnerCommands(bot))
