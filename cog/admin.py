@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
-from database import Database
+from live import db, BuyButton
+from discord.ui import View
 from main import config
 
 class AdminCommands(commands.Cog):
@@ -107,6 +108,20 @@ class AdminCommands(commands.Cog):
                 await ctx.send(f'User {grow_id} not found!')
         else:
             await ctx.send("Anda tidak memiliki akses admin.")
+
+    @commands.command(name='stock')
+    async def stock(self, ctx, id_live_stock: int):
+        channel = self.bot.get_channel(id_live_stock)
+        produk_data = self.db.get_all_products("products", ctx.guild.owner_id)
+        user_balance = self.db.get_user_balance(ctx.author.id, ctx.guild.owner_id)
+        embed = discord.Embed(title='Live Stock', description=f'Saldo Anda: :WL: {user_balance}')
+        for produk in produk_data:
+            embed.add_field(name=produk[1], value=f'Harga: {produk[2]}\nStock: {produk[3]}', inline=False)
+        view = View()
+        for produk in produk_data:
+            button = BuyButton(label=produk[1], product_id=produk[0])
+            view.add_item(button)
+        await channel.send(embed=embed, view=view)
 
     async def cog_check(self, ctx):
         return self.is_admin(ctx)
