@@ -40,7 +40,8 @@ class Database:
                 id_live_stock TEXT,
                 id_log_purch TEXT,
                 id_donation_log TEXT,
-                rental_time INTEGER DEFAULT 0
+                rental_time INTEGER DEFAULT 0,
+                rental_time_days INTEGER DEFAULT 0
             )
         ''')
         self.cursor.execute('''
