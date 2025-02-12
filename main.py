@@ -1,15 +1,14 @@
 import sys
 import os
 import discord
+import sqlite3
 from discord.ext import commands
 import asyncio
 import logging
 import logging.config
-from database import Database, load_config
-from donation import Donation
 from balance import Balance
+from load_config import load_config
 
-# Konfigurasi logging
 logging.config.dictConfig({
     'version': 1,
     'formatters': {
@@ -34,19 +33,28 @@ logging.config.dictConfig({
 
 logger = logging.getLogger(__name__)
 
-# Membaca konfigurasi dari file config.txt dengan validasi
+#Membaca konfigurasi dari file config.txt dengan validasi
 config = load_config('config.txt')
+logger.debug("Konfigurasi telah dibaca")
 
-# Inisialisasi intents
+#Inisialisasi intents
 intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
 intents.guilds = True
+logger.debug("Intents telah diinisialisasi")
 
-# Inisialisasi bot
+#Definisi kelas Database
+class Database:
+    def __init__(self, db_path):
+        self.conn = sqlite3.connect(db_path)
+        self.cursor = self.conn.cursor()
+
+#Inisialisasi bot
 bot = commands.Bot(command_prefix='!', intents=intents)
-load_extension('donation')
-# Koneksi ke database
+logger.debug("Bot telah diinisialisasi")
+
+#Koneksi ke database
 try:
     db_path = config.get('LINK_DATABASE')
     if db_path is None:
@@ -54,16 +62,18 @@ try:
         print("LINK_DATABASE tidak ditemukan dalam konfigurasi")
     else:
         db = Database(db_path)
+        logger.debug("Koneksi ke database telah berhasil")
 except Exception as e:
     logger.error(f'Failed to connect to the database: {type(e).__name__} - {e}')
     print(f'Failed to connect to the database: {type(e).__name__} - {e}')
     raise
 
-# Memuat cogs
+#Memuat cogs
 initial_extensions = [
     'cog.admin',
     'cog.live',
     'cog.owner',
+    'cog.donation'
 ]
 
 @bot.event
