@@ -2,12 +2,9 @@ import discord
 from discord.ext import commands
 from discord.ui import View, Button, button
 import sqlite3
-from config import load_config
+from main import config
 
-# Membaca konfigurasi dari file config.txt
-config = load_config('config.txt')
-
-# Inisialisasi database dengan konfigurasi
+#Inisialisasi database dengan konfigurasi
 db_path = config['LINK_DATABASE']
 conn = sqlite3.connect(db_path)
 
@@ -122,7 +119,6 @@ class BuyButton(Button):
         channel = self.view.bot.get_channel(channel_id)
         await channel.send(embed=embed, view=view)
 
-
 class LiveCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -153,7 +149,6 @@ class LiveCommands(commands.Cog):
             await ctx.send(embed=embed, view=view)
         else:
             await ctx.send('Anda tidak memiliki akses untuk menjalankan command ini!')
-
 
 async def setup(bot):
     await bot.add_cog(LiveCommands(bot))
