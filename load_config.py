@@ -1,19 +1,25 @@
+import logging
+import configparser
+
+logger = logging.getLogger(__name__)
+
 def load_config(filename):
-    config = {}
+    config = configparser.ConfigParser()
     try:
-        with open(filename, 'r') as f:
-            for line in f:
-                key, value = line.strip().split('=')
-                config[key] = value
+        config.read(filename)
         return config
     except FileNotFoundError:
-        print("File tidak ditemukan")
+        logger.error("Config file not found")
+        return None
+    except Exception as e:
+        logger.error(f"Error loading config: {e}")
         return None
 
-filename = '/storage/emulated/0/bot/config.txt'
+filename = 'config.txt'
 config = load_config(filename)
 
 if config:
-    print("Konfigurasi:")
-    for key, value in config.items():
-        print(f"{key} = {value}")
+    logger.info("Configuration loaded successfully:")
+    for section in config.sections():
+        for key, value in config.items(section):
+            logger.info(f"{section}.{key} = {value}")
