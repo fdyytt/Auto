@@ -5,7 +5,7 @@ import sqlite3
 from main import config
 
 # Inisialisasi database dengan konfigurasi
-db_path = config['LINK_DATABASE']
+db_path = config['DEFAULT']['LINK_DATABASE']
 conn = sqlite3.connect(db_path)
 
 class Database:
