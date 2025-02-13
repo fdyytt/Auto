@@ -4,7 +4,7 @@ from main import config
 import sqlite3
 
 # Inisialisasi database dengan konfigurasi
-db_path = config['DEFAULT']['LINK_DATABASE']
+db_path = config['LINK_DATABASE']
 conn = sqlite3.connect(db_path)
 
 class Database:
@@ -37,9 +37,10 @@ db = Database(conn)
 class OwnerCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.owner_id = int(config['OWNER_ID'])  # Menggunakan OWNER_ID dari config.txt
 
     def is_owner(self, ctx):
-        return ctx.author.id == self.bot.owner_id
+        return ctx.author.id == self.owner_id
 
     @commands.command(name='setAdmin')
     async def set_admin(self, ctx, admin_id: int, guild_id: int, id_history_buy: int, id_live_stock: int, id_log_purch: int, id_donation_log: int):
@@ -62,7 +63,7 @@ class OwnerCommands(commands.Cog):
         if self.is_owner(ctx):
             admin_data = db.show_admin(admin_id)
             if admin_data:
-                await ctx.send(f'Admin ID: {admin_data[0]}\nGuild ID: {admin_data[1]}\nHistory Buy ID: {admin_data[2]}\nLive Stock ID: {admin_data[3]}\nLog Purchase ID: {admin_data[4]}\nDonation Log ID: {admin_data[5]}\nRental Time (days): {admin_data[6]}')
+                await ctx.send(f'Admin ID: {admin_data[0]}\nGuild ID: {admin_data[1]}\nHistory Buy ID: {admin_data[2]}\nLive Stock ID: {admin_data[3]}\nLog Purchase ID: {admin_data[4]}\nDonation Log ID: {admin_data[5]}\nRental Time Days: {admin_data[6]}')
             else:
                 await ctx.send(f'Admin {admin_id} not found.')
         else:
