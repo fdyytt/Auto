@@ -1,8 +1,9 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord.ui import View, Button
 import sqlite3
 from main import config
+import asyncio
 
 # Inisialisasi database dengan konfigurasi
 db_path = config['DEFAULT']['LINK_DATABASE']
@@ -17,9 +18,9 @@ class Database:
         cursor.execute("SELECT * FROM admins WHERE discord_id=?", (admin_id,))
         return cursor.fetchone()
 
-    def get_all_products(self, table, admin_id):
+    def get_all_products(self, table, admin_id, guild_id):
         cursor = self.conn.cursor()
-        cursor.execute(f"SELECT * FROM {table} WHERE admin_id=?", (admin_id,))
+        cursor.execute(f"SELECT * FROM {table} WHERE admin_id=? AND guild_id=?", (admin_id, guild_id))
         return cursor.fetchall()
 
     def get_user_balance(self, grow_id, admin_id):
@@ -33,9 +34,9 @@ class Database:
         cursor.execute("UPDATE balances SET balance = balance + ? WHERE grow_id = ? AND admin_id = ?", (amount, grow_id, admin_id))
         self.conn.commit()
 
-    def update_product_stock(self, product_id, admin_id, quantity):
+    def update_product_stock(self, product_id, admin_id, amount):
         cursor = self.conn.cursor()
-        cursor.execute("UPDATE products SET stock = stock - ? WHERE id = ? AND admin_id = ?", (quantity, product_id, admin_id))
+        cursor.execute("UPDATE products SET stock = stock - ? WHERE id = ? AND admin_id = ?", (amount, product_id, admin_id))
         self.conn.commit()
 
     def find_product(self, table, query):
@@ -132,7 +133,7 @@ class BuyButton(Button):
         await buyer.send(file=discord.File(f"results_{buyer.name}.txt"))
 
         # Update stock embed
-        produk_data = db.get_all_products("products", interaction.guild.owner_id)
+        produk_data = db.get_all_products("products", interaction.guild.owner_id, interaction.guild.id)
         user_balance = db.get_user_balance(grow_id, interaction.guild.owner_id)
         embed = discord.Embed(title='Live Stock', description=f'Saldo Anda: :WL: {user_balance}')
         for produk in produk_data:
@@ -194,8 +195,14 @@ class LiveCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    def is_admin(self, ctx):
+        admin_data = db.get_admin_data(ctx.author.id)
+        return admin_data is not None
+
     @commands.command(name='world')
     async def world(self, ctx):
+        if not self.is_admin(ctx):
+            return
         admin_data = db.get_admin_data(ctx.author.id)
         if admin_data:
             world_name = admin_data[1]  # Assuming world_name is the second column
@@ -207,12 +214,17 @@ class LiveCommands(commands.Cog):
 
     @commands.command(name='stock')
     async def stock(self, ctx):
-        produk_data = db.get_all_products("products", ctx.guild.owner_id)
+        if not self.is_admin(ctx):
+            return
+        produk_data = db.get_all_products("products", ctx.author.id, ctx.guild.id)
         grow_id = db.get_grow_id(ctx.author.id)
-        user_balance = db.get_user_balance(grow_id, ctx.guild.owner_id) if grow_id else 0
+        user_balance = db.get_user_balance(grow_id, ctx.author.id) if grow_id else 0
         embed = discord.Embed(title='Live Stock', description=f'Saldo Anda: :WL: {user_balance}')
-        for produk in produk_data:
-            embed.add_field(name=produk[1], value=f'Harga: {produk[2]}\nStock: {produk[3]}', inline=False)
+        if produk_data:
+            for produk in produk_data:
+                embed.add_field(name=produk[1], value=f'Harga: {produk[2]}\nStock: {produk[3]}', inline=False)
+        else:
+            embed.add_field(name="No products available", value="Silakan tambahkan produk terlebih dahulu.", inline=False)
         view = View()
         for produk in produk_data:
             button = BuyButton(label=produk[1], product_id=produk[0])
@@ -221,6 +233,25 @@ class LiveCommands(commands.Cog):
         view.add_item(WorldButton())
         view.add_item(BalanceButton())
         await ctx.send(embed=embed, view=view)
+        self.update_stock.start(ctx, embed, view)
+
+    @tasks.loop(seconds=20)
+    async def update_stock(self, ctx, embed, view):
+        produk_data = db.get_all_products("products", ctx.author.id, ctx.guild.id)
+        grow_id = db.get_grow_id(ctx.author.id)
+        user_balance = db.get_user_balance(grow_id, ctx.author.id) if grow_id else 0
+        embed.clear_fields()
+        embed.description = f'Saldo Anda: :WL: {user_balance}'
+        if produk_data:
+            for produk in produk_data:
+                embed.add_field(name=produk[1], value=f'Harga: {produk[2]}\nStock: {produk[3]}', inline=False)
+        else:
+            embed.add_field(name="No products available", value="Silakan tambahkan produk terlebih dahulu.", inline=False)
+        await ctx.send(embed=embed, view=view)
+
+    @update_stock.before_loop
+    async def before_update_stock(self):
+        await self.bot.wait_until_ready()
 
 async def setup(bot):
     await bot.add_cog(LiveCommands(bot))
